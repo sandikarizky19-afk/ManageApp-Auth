@@ -18,6 +18,7 @@ import (
 func main() {
 	cfg := controller.LoadConfig()
 
+	//koneksi ke database PostgreSQL
 	db, err := repository.NewPostgresDB(cfg)
 	if err != nil {
 		log.Fatalf("Gagal terhubung ke database: %v", err)
@@ -25,16 +26,21 @@ func main() {
 	defer db.Close()
 	log.Println("Berhasil terhubung ke database PostgreSQL!")
 
+
+	//function migrasi database
 	if err := migration.RunMigrations(db); err != nil {
 		log.Fatalf("Gagal menjalankan migrasi database: %v", err)
 	}
 	log.Println("Migrasi database selesai.")
 
+
+	// Inisialisasi JWT manager
 	jwtManager, err := utils.NewJwtManager()
 	if err != nil {
 		log.Fatalf("Gagal inisialisasi JWT manager: %v", err)
 	}
 
+	// Inisialisasi server
 	srv := server.New(db, jwtManager)
 	host := cfg.AppHost
 	if host == "" {
@@ -53,7 +59,6 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
 	log.Println("Mematikan server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -62,6 +67,5 @@ func main() {
 	if err := srv.App.ShutdownWithContext(ctx); err != nil {
 		log.Fatalf("Gagal shutdown server dengan rapi: %v", err)
 	}
-
 	log.Println("Server auth berhasil dimatikan.")
 }

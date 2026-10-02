@@ -2,9 +2,14 @@ package repository
 
 import (
 	"auth-service/internal/model"
+	"auth-service/internal/utils"
 	"context"
 	"database/sql"
+	"errors"
+	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type UserRepository struct {
@@ -102,7 +107,14 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 	return &user, nil
 }
 
+var (
+	ErrUserNotFound  = errors.New("user tidak ditemukan")
+	ErrUsernameTaken = errors.New("username sudah digunakan")
+	ErrEmailTaken    = errors.New("email sudah digunakan")
+)
+
 func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
+	
 	query := `
 		INSERT INTO users (username, email, password, role)
 		VALUES ($1, $2, $3, $4)
@@ -112,10 +124,28 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return r.DB.QueryRowContext(ctx, query,
+	err := r.DB.QueryRowContext(ctx, query,
 		user.Username,
 		user.Email,
 		user.Password,
 		user.Role,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		switch pgErr.ConstraintName{
+		case "idx_users_username":
+			return utils.AppError{
+				Code:    http.StatusConflict,
+				Message: "username sudah digunakan",
+			}
+		case "idx_users_email":
+			return utils.AppError{
+				Code:    http.StatusConflict,
+				Message: "email sudah digunakan",
+			}
+		}
+	}
+	return err
 }

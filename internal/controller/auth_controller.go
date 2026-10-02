@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/mail"
+	"regexp"
 	"strings"
 
 	"auth-service/internal/model"
@@ -167,72 +170,6 @@ func (c *AuthController) getUserByID(ctx context.Context, userID string) (*model
 	return c.Repo.GetUserByID(ctx, userID)
 }
 
-func (c *AuthController) RegisterUser(ctx context.Context, user *model.User) error {
-	if strings.TrimSpace(user.Username) == "" || strings.TrimSpace(user.Password) == "" {
-		return utils.AppError{
-			Code:    http.StatusBadRequest,
-			Message: "username dan password wajib diisi.",
-		}
-	}
-
-	if strings.TrimSpace(user.Email) == "" {
-		return utils.AppError{
-			Code:    http.StatusBadRequest,
-			Message: "email wajib diisi.",
-		}
-	}
-
-	if strings.TrimSpace(user.Role) == "" {
-		user.Role = "user"
-	}
-
-	existingByUsername, err := c.getUserByUsername(ctx, user.Username)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return utils.AppError{
-			Code:    http.StatusInternalServerError,
-			Message: "gagal memeriksa username",
-		}
-	}
-	if existingByUsername != nil {
-		return utils.AppError{
-			Code:    http.StatusConflict,
-			Message: "username sudah digunakan",
-		}
-	}
-
-	existingByEmail, err := c.getUserByEmail(ctx, user.Email)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return utils.AppError{
-			Code:    http.StatusInternalServerError,
-			Message: "gagal memeriksa email",
-		}
-	}
-	if existingByEmail != nil {
-		return utils.AppError{
-			Code:    http.StatusConflict,
-			Message: "email sudah digunakan",
-		}
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return utils.AppError{
-			Code:    http.StatusInternalServerError,
-			Message: "gagal menghash password. " + err.Error(),
-		}
-	}
-	user.Password = string(hashedPassword)
-
-	if err := c.createUser(ctx, user); err != nil {
-		return utils.AppError{
-			Code:    http.StatusInternalServerError,
-			Message: "gagal membuat user baru",
-		}
-	}
-
-	return nil
-}
-
 func (c *AuthController) createUser(ctx context.Context, user *model.User) error {
 	return c.Repo.CreateUser(ctx, user)
 }
@@ -241,6 +178,9 @@ func (c *AuthController) getUserByEmail(ctx context.Context, email string) (*mod
 	return c.Repo.GetUserByEmail(ctx, email)
 }
 
+var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{3,32}$`)
+
+
 type RegisterRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
@@ -248,8 +188,70 @@ type RegisterRequest struct {
 	Role     string `json:"role"`
 }
 
-var (
-	ErrUsernameTaken = errors.New("username sudah digunakan")
-	ErrEmailTaken    = errors.New("email sudah digunakan")
-)
+func (r *RegisterRequest) normalize() {
+	r.Username = strings.TrimSpace(r.Username)
+	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+}
+
+func (r *RegisterRequest) validate() error {
+	if !usernameRegex.MatchString(r.Username) {
+		return utils.AppError{
+			Code:    http.StatusBadRequest,
+			Message: "username harus 3-32 karakter (huruf, angka, underscore, titik)",
+		}
+	}
+	if _, err := mail.ParseAddress(r.Email); err != nil {
+		return utils.AppError{Code: http.StatusBadRequest, Message: "format email tidak valid"}
+	}
+	// bcrypt hanya memproses 72 byte pertama, jadi batasi di sini.
+	if len(r.Password) < 8 || len(r.Password) > 72 {
+		return utils.AppError{
+			Code:    http.StatusBadRequest,
+			Message: "password harus 8-72 karakter",
+		}
+	}
+	return nil
+}
+
+
+func (c *AuthController) RegisterUser(ctx context.Context, req RegisterRequest) (*model.User, error) {
+	req.normalize()
+	if err := req.validate(); err != nil {
+		return nil, err
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		slog.ErrorContext(ctx, "register: gagal hash password", "error", err)
+		return nil, utils.AppError{
+			Code:    http.StatusInternalServerError,
+			Message: "terjadi kesalahan pada server",
+		}
+	}
+
+	user := &model.User{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: string(hash),
+		Role:     "user", // dipaksa di server, bukan dari input
+	}
+
+	if err := c.Repo.CreateUser(ctx, user); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrUsernameTaken):
+			return nil, utils.AppError{Code: http.StatusConflict, Message: "username sudah digunakan"}
+		case errors.Is(err, repository.ErrEmailTaken):
+			return nil, utils.AppError{Code: http.StatusConflict, Message: "email sudah digunakan"}
+		default:
+			slog.ErrorContext(ctx, "register: gagal membuat user", "error", err)
+			return nil, utils.AppError{
+				Code:    http.StatusInternalServerError,
+				Message: "terjadi kesalahan pada server",
+			}
+		}
+	}
+
+	user.Password = "" // jangan pernah kembalikan hash ke pemanggil
+	return user, nil
+}
 

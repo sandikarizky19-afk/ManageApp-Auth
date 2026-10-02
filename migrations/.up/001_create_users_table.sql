@@ -11,6 +11,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
-INSERT INTO users (username, email, password, role)
-VALUES ('admin', 'admin@example.com', '$2a$12$D3OQDUS/j9lnTervUbKD2e2pWrb7xFNEq.K9TjEg53KAMVLAmHOQi', 'admin')
-ON CONFLICT (username) DO NOTHING;
+-- INSERT INTO users (username, email, password, role)
+-- VALUES ('admin', 'admin@example.com', '$2a$12$D3OQDUS/j9lnTervUbKD2e2pWrb7xFNEq.K9TjEg53KAMVLAmHOQi', 'admin')
+-- ON CONFLICT (username) DO NOTHING;

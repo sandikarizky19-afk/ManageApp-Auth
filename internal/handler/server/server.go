@@ -49,6 +49,8 @@ func (s *Server) setupRoutes(jwtManager *utils.JWTManager) {
 	api.Post("/auth/login", authHandler.Login)
 	api.Post("/auth/logout", authHandler.Logout)
 	api.Post("/auth/refresh", authHandler.Refresh)
+	api.Post("/auth/password/forgot", authHandler.RequestPasswordReset)
+	api.Post("/auth/password/reset", authHandler.ResetPassword)
 }
 
 func (s *Server) Listen(addr string) error {
