@@ -128,7 +128,12 @@ func (c *AuthController) RefreshToken(ctx context.Context, refreshToken string) 
 		return nil, fmt.Errorf("refresh token tidak valid: %w", err)
 	}
 
-	user, err := c.getUserByID(ctx, claims.UserID)
+	var userID int64
+	if n, err := fmt.Sscanf(claims.UserID, "%d", &userID); err != nil || n != 1 {
+		return nil, fmt.Errorf("id pengguna tidak valid dalam refresh token: %q", claims.UserID)
+	}
+
+	user, err := c.getUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidCredentials
@@ -166,7 +171,7 @@ func (c *AuthController) getUserByUsername(ctx context.Context, username string)
 	return c.Repo.GetUserByUsername(ctx, username)
 }
 
-func (c *AuthController) getUserByID(ctx context.Context, userID string) (*model.User, error) {
+func (c *AuthController) getUserByID(ctx context.Context, userID int64) (*model.User, error) {
 	return c.Repo.GetUserByID(ctx, userID)
 }
 

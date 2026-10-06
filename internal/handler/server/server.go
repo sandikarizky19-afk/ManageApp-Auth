@@ -2,8 +2,12 @@ package server
 
 import (
 	"database/sql"
+	"errors"
+	"log"
 
+	"auth-service/internal/controller"
 	"auth-service/internal/handler"
+	"auth-service/internal/middleware"
 	"auth-service/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -20,6 +24,7 @@ type Server struct {
 func New(db *sql.DB, jwtManager *utils.JWTManager) *Server {
 	app := fiber.New(fiber.Config{
 		AppName: "Auth Service",
+		ErrorHandler: errorHandler,
 	})
 
 	app.Use(logger.New())
@@ -41,8 +46,36 @@ func New(db *sql.DB, jwtManager *utils.JWTManager) *Server {
 	return s
 }
 
+func errorHandler(c *fiber.Ctx, err error) error {
+	var appErr utils.AppError
+	if errors.As(err, &appErr) {
+		return c.Status(appErr.Code).JSON(fiber.Map{
+			"success": false,
+			"message": appErr.Message,
+		})
+	}
+
+	var fe *fiber.Error
+	if errors.As(err, &fe) {
+		return c.Status(fe.Code).JSON(fiber.Map{
+			"success": false,
+			"message": fe.Message,
+		})
+	}
+
+	log.Printf("unhandled error: %v", err)
+	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		"success": false,
+		"message": "terjadi kesalahan pada server",
+	})
+}
+
 func (s *Server) setupRoutes(jwtManager *utils.JWTManager) {
 	authHandler := handler.NewAuthHandler(s.DB, jwtManager)
+
+	profileController := controller.NewProfileController(s.DB, jwtManager)
+	profileHandler := handler.NewProfileHandler(profileController)
+
 	api := s.App.Group("/api/v1")
 	api.Get("/health", s.healthCheck)
 	api.Post("/auth/register", authHandler.Register)
@@ -51,6 +84,12 @@ func (s *Server) setupRoutes(jwtManager *utils.JWTManager) {
 	api.Post("/auth/refresh", authHandler.Refresh)
 	api.Post("/auth/password/forgot", authHandler.RequestPasswordReset)
 	api.Post("/auth/password/reset", authHandler.ResetPassword)
+
+	// protected
+	profile := api.Group("/profile", middleware.AuthRequired(jwtManager))
+	profile.Get("/", profileHandler.GetProfileUser)
+	profile.Put("/", profileHandler.UpdateProfileUser)
+	profile.Put("/password", profileHandler.ChangePassword)
 }
 
 func (s *Server) Listen(addr string) error {
