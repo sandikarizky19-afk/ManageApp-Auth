@@ -16,18 +16,17 @@ type ProfileHandler struct {
 func NewProfileHandler(c *controller.ProfileController) *ProfileHandler {
 	return &ProfileHandler{
 		controller: c,
-
 	}
 }
 
 func (h *ProfileHandler) GetProfileUser(c *fiber.Ctx) error {
 	userID, ok := c.Locals("user_id").(int64)
-    if !ok {
-        return &utils.AppError{
-            Code:    http.StatusUnauthorized,
-            Message: "Unauthorized",
-        }
-    }
+	if !ok {
+		return &utils.AppError{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		}
+	}
 
 	profile, err := h.controller.GetProfile(c.UserContext(), userID)
 	if err != nil {
@@ -36,7 +35,7 @@ func (h *ProfileHandler) GetProfileUser(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"data": profile,
+		"data":    profile,
 	})
 }
 
@@ -52,7 +51,7 @@ func (h *ProfileHandler) UpdateProfileUser(c *fiber.Ctx) error {
 	var req model.UpdateProfileRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.AppError{
-			Code: http.StatusBadRequest,
+			Code:    http.StatusBadRequest,
 			Message: "payload tidak valid",
 		}
 	}
@@ -79,7 +78,7 @@ func (h *ProfileHandler) ChangePassword(c *fiber.Ctx) error {
 	var req model.ChangePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.AppError{
-			Code: http.StatusBadRequest,
+			Code:    http.StatusBadRequest,
 			Message: "payload tidak valid",
 		}
 	}
@@ -92,4 +91,47 @@ func (h *ProfileHandler) ChangePassword(c *fiber.Ctx) error {
 		"success": true,
 		"message": "password berhasil diperbarui",
 	})
+}
+
+func (h *ProfileHandler) CheckAktifUser(c *fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return &utils.AppError{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		}
+	}
+
+	user, err := h.controller.CheckAktifUser(c.UserContext(), userID)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "data pengguna ditemukan",
+		"data":    user,
+	})
+
+}
+
+func (h *ProfileHandler) NonAktifUser(c *fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return &utils.AppError{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		}
+	}
+
+	err := h.controller.NonAktifUser(c.UserContext(), userID)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "user berhasil dinonaktifkan",
+	})
+
 }

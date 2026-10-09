@@ -32,7 +32,7 @@ func (c *ProfileController) GetProfile(ctx context.Context, userId int64) (*mode
 	getProfile, err := c.Repo.GetUserProfileByUserID(ctx, userId)
 	if err != nil {
 		return nil, utils.AppError{
-			Code: http.StatusInternalServerError, 
+			Code:    http.StatusInternalServerError,
 			Message: "gagal mengambil data pengguna"}
 	}
 
@@ -72,7 +72,7 @@ func (c *ProfileController) UpdateProfile(ctx context.Context, userID int64, req
 func (c *ProfileController) ChangePassword(ctx context.Context, userId int64, req model.ChangePasswordRequest) error {
 	if len(req.NewPassword) < 8 {
 		return utils.AppError{
-			Code: http.StatusBadRequest, 
+			Code:    http.StatusBadRequest,
 			Message: "password baru minimal 8 karakter",
 		}
 	}
@@ -80,14 +80,14 @@ func (c *ProfileController) ChangePassword(ctx context.Context, userId int64, re
 	user, err := c.Repo.GetUserByID(ctx, userId)
 	if err != nil {
 		return utils.AppError{
-			Code: http.StatusNotFound, 
+			Code:    http.StatusNotFound,
 			Message: "pengguna tidak ditemukan",
 		}
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)) != nil {
 		return utils.AppError{
-			Code: http.StatusBadRequest, 
+			Code:    http.StatusBadRequest,
 			Message: "password saat ini salah",
 		}
 	}
@@ -95,10 +95,27 @@ func (c *ProfileController) ChangePassword(ctx context.Context, userId int64, re
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return utils.AppError{
-			Code: http.StatusInternalServerError, 
+			Code:    http.StatusInternalServerError,
 			Message: "gagal memproses password",
 		}
 	}
 
 	return c.Repo.UpdatePassword(ctx, userId, string(hashed))
+}
+
+func (c *ProfileController) CheckAktifUser(ctx context.Context, userId int64) (*model.CheckAktifUserResponse, error) {
+	CheckAktifUser, err := c.Repo.CheckAktifUser(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	return CheckAktifUser, nil
+}
+
+func (c *ProfileController) NonAktifUser(ctx context.Context, userId int64) error {
+	err := c.Repo.NonAktifUser(ctx, userId)
+	if err != nil {
+		return err
+	}
+	return nil
 }

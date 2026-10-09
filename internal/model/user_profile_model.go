@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-
 type Gender string
 
 const (
@@ -45,4 +44,10 @@ type ProfileResponse struct {
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password"`
 	NewPassword string `json:"new_password"`
+}
+
+type CheckAktifUserResponse struct {
+	ID        int64      `json:"id"`
+	Username  string     `json:"username"`
+	DeletedAt *time.Time `json:"deleted_at"`
 }

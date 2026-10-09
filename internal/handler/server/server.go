@@ -23,14 +23,14 @@ type Server struct {
 
 func New(db *sql.DB, jwtManager *utils.JWTManager) *Server {
 	app := fiber.New(fiber.Config{
-		AppName: "Auth Service",
+		AppName:      "Auth Service",
 		ErrorHandler: errorHandler,
 	})
 
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "http://localhost:3000, http://127.0.0.1:3000, http://localhost:5173, http://127.0.0.1:5173",
-		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS, PATCH",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowCredentials: true,
 	}))
@@ -90,6 +90,8 @@ func (s *Server) setupRoutes(jwtManager *utils.JWTManager) {
 	profile.Get("/", profileHandler.GetProfileUser)
 	profile.Put("/", profileHandler.UpdateProfileUser)
 	profile.Put("/password", profileHandler.ChangePassword)
+	profile.Get("/status", profileHandler.CheckAktifUser)
+	profile.Patch("/deactivate", profileHandler.NonAktifUser)
 }
 
 func (s *Server) Listen(addr string) error {

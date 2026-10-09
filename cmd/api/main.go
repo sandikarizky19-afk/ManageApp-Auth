@@ -26,13 +26,11 @@ func main() {
 	defer db.Close()
 	log.Println("Berhasil terhubung ke database PostgreSQL!")
 
-
 	//function migrasi database
 	if err := migration.RunMigrations(db); err != nil {
 		log.Fatalf("Gagal menjalankan migrasi database: %v", err)
 	}
 	log.Println("Migrasi database selesai.")
-
 
 	// Inisialisasi JWT manager
 	jwtManager, err := utils.NewJwtManager()

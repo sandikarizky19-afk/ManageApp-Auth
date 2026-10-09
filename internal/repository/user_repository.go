@@ -114,7 +114,7 @@ func (r *UserRepository) GetUserProfileByUserID(ctx context.Context, userID int6
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	err := r.DB.QueryRowContext(ctx, 
+	err := r.DB.QueryRowContext(ctx,
 		`select 
 			id,
 			user_id, 
@@ -127,23 +127,23 @@ func (r *UserRepository) GetUserProfileByUserID(ctx context.Context, userID int6
 			updated_at
 		from user_profiles
 		where user_id = $1 limit 1`, userID).Scan(
-			&p.ID,
-			&p.UserID,
-			&p.FullName,
-			&p.AvatarURL,
-			&p.Gender,
-			&p.BirthDate,
-			&p.Address,
-			&createdAt,
-			&p.UpdatedAt,
-		)
-		if err != nil {
-			return nil, utils.AppError{
-				Code: http.StatusInternalServerError,
-				Message: "gagal mengambil data profil pengguna",
-			}
+		&p.ID,
+		&p.UserID,
+		&p.FullName,
+		&p.AvatarURL,
+		&p.Gender,
+		&p.BirthDate,
+		&p.Address,
+		&createdAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		return nil, utils.AppError{
+			Code:    http.StatusInternalServerError,
+			Message: "gagal mengambil data profil pengguna",
 		}
-		p.CreatedAt = createdAt.Format(time.RFC3339)
+	}
+	p.CreatedAt = createdAt.Format(time.RFC3339)
 
 	return &p, nil
 }
@@ -182,7 +182,7 @@ func (r *UserRepository) UpdateUserProfile(ctx context.Context, userID int64, re
 	if err != nil {
 		// Log error asli di server Anda (opsional tapi disarankan untuk debugging)
 		// log.Printf("Error Upsert Profile for user %d: %v", userID, err)
-		
+
 		return utils.AppError{
 			Code:    http.StatusInternalServerError,
 			Message: "Gagal menyimpan atau memperbarui data profil pengguna",
@@ -220,8 +220,6 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, hashe
 	return nil
 }
 
-
-
 var (
 	ErrUserNotFound  = errors.New("user tidak ditemukan")
 	ErrUsernameTaken = errors.New("username sudah digunakan")
@@ -229,7 +227,7 @@ var (
 )
 
 func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
-	
+
 	query := `
 		INSERT INTO users (username, email, password, role)
 		VALUES ($1, $2, $3, $4)
@@ -246,10 +244,9 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error
 		user.Role,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 
-
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		switch pgErr.ConstraintName{
+		switch pgErr.ConstraintName {
 		case "idx_users_username":
 			return utils.AppError{
 				Code:    http.StatusConflict,
@@ -263,4 +260,81 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error
 		}
 	}
 	return err
+}
+
+func (r *UserRepository) CheckAktifUser(ctx context.Context, userID int64) (*model.CheckAktifUserResponse, error) {
+	user := &model.CheckAktifUserResponse{}
+
+	var deletedAt sql.NullTime
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	err := r.DB.QueryRowContext(ctx, `	 
+		select
+			id,
+			username,
+			deleted_at
+		from
+			users
+		where id = $1
+		limit 1
+	`, userID).Scan(
+		&user.ID,
+		&user.Username,
+		&deletedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &utils.AppError{
+				Code:    http.StatusNotFound,
+				Message: "data pengguna tidak ditemukan",
+			}
+		}
+		return nil, utils.AppError{
+			Code:    http.StatusInternalServerError,
+			Message: "gagal mengambil data pengguna. " + err.Error()}
+	}
+	if deletedAt.Valid {
+		user.DeletedAt = &deletedAt.Time
+	}
+	return user, nil
+}
+
+func (r *UserRepository) NonAktifUser(ctx context.Context, userID int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	result, err := r.DB.ExecContext(ctx, `
+		UPDATE users
+		SET
+			deleted_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`, userID)
+
+	if err != nil {
+		return &utils.AppError{
+			Code:    http.StatusInternalServerError,
+			Message: "gagal menonaktifkan pengguna",
+		}
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return &utils.AppError{
+			Code:    http.StatusInternalServerError,
+			Message: "gagal memeriksa hasil perubahan pengguna",
+		}
+	}
+
+	if rows == 0 {
+		return &utils.AppError{
+			Code:    http.StatusNotFound,
+			Message: "pengguna tidak ditemukan atau sudah tidak aktif",
+		}
+	}
+
+	return nil
 }
